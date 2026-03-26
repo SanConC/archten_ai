@@ -26,7 +26,7 @@ input_shape = model.input_shape
 IMG_HEIGHT = input_shape[1]
 IMG_WIDTH = input_shape[2]
 
-# Umbral mínimo de confianza
+# Umbral de confianza para marcar como incierto
 CONFIDENCE_THRESHOLD = 0.75
 
 
