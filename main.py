@@ -26,7 +26,7 @@ input_shape = model.input_shape
 IMG_HEIGHT = input_shape[1]
 IMG_WIDTH = input_shape[2]
 
-# Umbral mínimo de confianza para aceptar una predicción
+# Umbral mínimo de confianza
 CONFIDENCE_THRESHOLD = 0.75
 
 
@@ -39,7 +39,7 @@ def preprocess_image(image: Image.Image):
 
     image_array = np.asarray(image).astype(np.float32)
 
-    # Preprocesamiento típico de Teachable Machine
+    # Normalización típica de Teachable Machine
     normalized_image_array = (image_array / 127.5) - 1
 
     data = np.ndarray(shape=(1, IMG_HEIGHT, IMG_WIDTH, 3), dtype=np.float32)
@@ -50,12 +50,17 @@ def preprocess_image(image: Image.Image):
 
 @app.get("/")
 def root():
-    return {"success": True, "message": "ArchTen AI running"}
+    return {
+        "success": True,
+        "message": "ArchTen AI running"
+    }
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok"
+    }
 
 
 @app.post("/predict")
@@ -80,12 +85,8 @@ async def predict(file: UploadFile = File(...)):
         index = int(np.argmax(scores))
         confidence = float(scores[index])
 
-        raw_label = class_names[index]
-
-        # Limpieza de label por si viene como "0 POTENCIAL ARQUEOLOGICO"
+        raw_label = class_names[index].strip()
         clean_label = raw_label
-        if " " in raw_label:
-            clean_label = raw_label.split(" ", 1)[1].strip()
 
         final_label = clean_label
         if confidence < CONFIDENCE_THRESHOLD:
@@ -106,4 +107,7 @@ async def predict(file: UploadFile = File(...)):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al procesar la imagen: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al procesar la imagen: {str(e)}"
+        )
