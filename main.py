@@ -9,7 +9,7 @@ app = FastAPI(title="ArchTen AI API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # luego lo restringimos
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -23,9 +23,12 @@ with open("labels.txt", "r", encoding="utf-8") as f:
 
 # Detectar tamaño de entrada del modelo automáticamente
 input_shape = model.input_shape
-# Normalmente algo como (None, 224, 224, 3)
 IMG_HEIGHT = input_shape[1]
 IMG_WIDTH = input_shape[2]
+
+# Umbral mínimo de confianza para aceptar una predicción
+CONFIDENCE_THRESHOLD = 0.75
+
 
 def preprocess_image(image: Image.Image):
     image = image.convert("RGB")
@@ -36,8 +39,7 @@ def preprocess_image(image: Image.Image):
 
     image_array = np.asarray(image).astype(np.float32)
 
-    # Preprocesamiento típico de export Teachable Machine:
-    # (image / 127.5) - 1
+    # Preprocesamiento típico de Teachable Machine
     normalized_image_array = (image_array / 127.5) - 1
 
     data = np.ndarray(shape=(1, IMG_HEIGHT, IMG_WIDTH, 3), dtype=np.float32)
@@ -45,30 +47,38 @@ def preprocess_image(image: Image.Image):
 
     return data
 
+
 @app.get("/")
 def root():
     return {"success": True, "message": "ArchTen AI running"}
+
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
+
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
     try:
-        if not file.content_type or not file.content_type.startswith("image/"):
-            raise HTTPException(status_code=400, detail="El archivo no es una imagen válida")
-
         contents = await file.read()
         if not contents:
             raise HTTPException(status_code=400, detail="Archivo vacío")
 
-        image = Image.open(io.BytesIO(contents))
+        try:
+            image = Image.open(io.BytesIO(contents))
+            image.verify()
+            image = Image.open(io.BytesIO(contents)).convert("RGB")
+        except Exception:
+            raise HTTPException(status_code=400, detail="El archivo no es una imagen válida")
+
         processed = preprocess_image(image)
 
         prediction = model.predict(processed, verbose=0)
-        index = int(np.argmax(prediction[0]))
-        confidence = float(prediction[0][index])
+        scores = prediction[0]
+
+        index = int(np.argmax(scores))
+        confidence = float(scores[index])
 
         raw_label = class_names[index]
 
@@ -77,12 +87,20 @@ async def predict(file: UploadFile = File(...)):
         if " " in raw_label:
             clean_label = raw_label.split(" ", 1)[1].strip()
 
+        final_label = clean_label
+        if confidence < CONFIDENCE_THRESHOLD:
+            final_label = "INCIERTO"
+
         return {
             "success": True,
-            "label": clean_label,
+            "label": final_label,
+            "predicted_label": clean_label,
             "raw_label": raw_label,
             "class_index": index,
-            "confidence": round(confidence, 4)
+            "confidence": round(confidence, 4),
+            "threshold": CONFIDENCE_THRESHOLD,
+            "scores": [round(float(x), 4) for x in scores.tolist()],
+            "labels": class_names
         }
 
     except HTTPException:
